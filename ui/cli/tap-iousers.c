@@ -37,7 +37,7 @@ typedef struct _io_users_t {
 } io_users_t;
 
 static void
-iousers_draw(void *arg)
+iousers_draw_human_readable(void *arg)
 {
 	conv_hash_t *hash = (conv_hash_t*)arg;
 	io_users_t *iu = (io_users_t *)hash->user_data;
@@ -222,6 +222,110 @@ iousers_draw(void *arg)
 		max_frames = last_frames;
 	} while (last_frames);
 	printf("================================================================================\n");
+}
+
+static void
+iousers_draw_machine_readable(void *arg)
+{
+	/* Prints out the conversations in a format that is easy for machine parsing */
+	conv_hash_t *hash = (conv_hash_t*)arg;
+	io_users_t *iu = (io_users_t *)hash->user_data;
+	conv_item_t *iui;
+	guint64 last_frames, max_frames;
+	struct tm * tm_time;
+	guint i;
+	gboolean display_ports = TRUE;
+
+	max_frames = UINT_MAX;
+	do {
+		last_frames = 0;
+		for (i=0; (iu->hash.conv_array && i < iu->hash.conv_array->len); i++) {
+			guint64 tot_frames;
+
+			iui = &g_array_index(iu->hash.conv_array, conv_item_t, i);
+			tot_frames = iui->rx_frames + iui->tx_frames;
+
+			if ((tot_frames > last_frames) && (tot_frames < max_frames)) {
+				last_frames = tot_frames;
+			}
+		}
+
+		for (i=0; (iu->hash.conv_array && i < iu->hash.conv_array->len); i++) {
+			guint64 tot_frames;
+			char *src_addr, *dst_addr;
+
+			iui = &g_array_index(iu->hash.conv_array, conv_item_t, i);
+			tot_frames = iui->rx_frames + iui->tx_frames;
+
+			if (tot_frames == last_frames) {
+				/* XXX - TODO: make name / port resolution configurable (through gbl_resolv_flags?) */
+				src_addr = get_conversation_address(NULL, &iui->src_address, TRUE);
+				dst_addr = get_conversation_address(NULL, &iui->dst_address, TRUE);
+				if (display_ports) {
+					char *src, *dst, *src_port, *dst_port;
+					src_port = get_conversation_port(NULL, iui->src_port, iui->ptype, TRUE);
+					dst_port = get_conversation_port(NULL, iui->dst_port, iui->ptype, TRUE);
+					src = wmem_strconcat(NULL, src_addr, ":", src_port, NULL);
+					dst = wmem_strconcat(NULL, dst_addr, ":", dst_port, NULL);
+					printf("%s,%s,%" G_GINT64_MODIFIER "u,%" G_GINT64_MODIFIER
+					       "u,%" G_GINT64_MODIFIER "u,%" G_GINT64_MODIFIER "u,%"
+					       G_GINT64_MODIFIER "u,%" G_GINT64_MODIFIER "u,",
+						src, dst,
+						iui->rx_frames, iui->rx_bytes,
+						iui->tx_frames, iui->tx_bytes,
+						iui->tx_frames+iui->rx_frames,
+						iui->tx_bytes+iui->rx_bytes
+					);
+					wmem_free(NULL, src_port);
+					wmem_free(NULL, dst_port);
+					wmem_free(NULL, src);
+					wmem_free(NULL, dst);
+				} else {
+					printf("%-20s <-> %-20s  %6" G_GINT64_MODIFIER "u %9" G_GINT64_MODIFIER
+					       "u  %6" G_GINT64_MODIFIER "u %9" G_GINT64_MODIFIER "u  %6"
+					       G_GINT64_MODIFIER "u %9" G_GINT64_MODIFIER "u  ",
+						src_addr, dst_addr,
+						iui->rx_frames, iui->rx_bytes,
+						iui->tx_frames, iui->tx_bytes,
+						iui->tx_frames+iui->rx_frames,
+						iui->tx_bytes+iui->rx_bytes
+					);
+				}
+
+				wmem_free(NULL, src_addr);
+				wmem_free(NULL, dst_addr);
+
+
+				tm_time = gmtime(&iui->start_abs_time.secs);
+				if (tm_time != NULL) {
+					printf("%04d-%02d-%02d %02d:%02d:%02d,",
+							tm_time->tm_year + 1900,
+							tm_time->tm_mon + 1,
+							tm_time->tm_mday,
+							tm_time->tm_hour,
+							tm_time->tm_min,
+							tm_time->tm_sec);
+				} else {
+					printf("XXXX-XX-XX XX:XX:XX,");
+				}
+				printf("%f\n",
+					nstime_to_sec(&iui->stop_time) - nstime_to_sec(&iui->start_time));
+
+			}
+		}
+		max_frames = last_frames;
+	} while (last_frames);
+	printf("================================================================================\n");
+}
+static void
+iousers_draw(void *arg)
+{
+	printf("Testing\n");
+	if (1) {
+		iousers_draw_machine_readable(arg);
+	} else {
+		iousers_draw_human_readable(arg);
+	}
 }
 
 void init_iousers(struct register_ct *ct, const char *filter)
