@@ -234,7 +234,8 @@ iousers_draw_machine_readable(void *arg)
 	guint64 last_frames, max_frames;
 	struct tm * tm_time;
 	guint i;
-	gboolean display_ports = TRUE;
+	gboolean display_ports = (!strncmp(iu->type, "TCP", 3) || !strncmp(iu->type, "UDP", 3) || !strncmp(iu->type, "SCTP", 4)) ? TRUE : FALSE;;
+	char null_string[] = "\0";
 
 	max_frames = UINT_MAX;
 	do {
@@ -252,44 +253,57 @@ iousers_draw_machine_readable(void *arg)
 
 		for (i=0; (iu->hash.conv_array && i < iu->hash.conv_array->len); i++) {
 			guint64 tot_frames;
-			char *src_addr, *dst_addr;
+			char *src_addr, *dst_addr, *src_port, *dst_port, *src_name, *dst_name;
+
+			/**
+			 * In specific cases, we won't have port information, so we'll simply leave
+			 * these preset to a null string so they'll come out blank when we build the
+			 * printf line
+			 **/
+
+			src_port = null_string;
+			dst_port = null_string;
 
 			iui = &g_array_index(iu->hash.conv_array, conv_item_t, i);
 			tot_frames = iui->rx_frames + iui->tx_frames;
 
 			if (tot_frames == last_frames) {
 				/* XXX - TODO: make name / port resolution configurable (through gbl_resolv_flags?) */
-				src_addr = get_conversation_address(NULL, &iui->src_address, TRUE);
-				dst_addr = get_conversation_address(NULL, &iui->dst_address, TRUE);
+				src_name = get_conversation_address(NULL, &iui->src_address, TRUE);
+				dst_name = get_conversation_address(NULL, &iui->dst_address, TRUE);
+				src_addr = get_conversation_address(NULL, &iui->src_address, FALSE);
+				dst_addr = get_conversation_address(NULL, &iui->dst_address, FALSE);
+
 				if (display_ports) {
-					char *src, *dst, *src_port, *dst_port;
-					src_port = get_conversation_port(NULL, iui->src_port, iui->ptype, TRUE);
-					dst_port = get_conversation_port(NULL, iui->dst_port, iui->ptype, TRUE);
-					src = wmem_strconcat(NULL, src_addr, ":", src_port, NULL);
-					dst = wmem_strconcat(NULL, dst_addr, ":", dst_port, NULL);
-					printf("%s,%s,%" G_GINT64_MODIFIER "u,%" G_GINT64_MODIFIER
-					       "u,%" G_GINT64_MODIFIER "u,%" G_GINT64_MODIFIER "u,%"
-					       G_GINT64_MODIFIER "u,%" G_GINT64_MODIFIER "u,",
-						src, dst,
-						iui->rx_frames, iui->rx_bytes,
-						iui->tx_frames, iui->tx_bytes,
-						iui->tx_frames+iui->rx_frames,
-						iui->tx_bytes+iui->rx_bytes
-					);
+					/* For CSV data, we'll simply render ports as integers instead of name */
+					src_port = get_conversation_port(NULL, iui->src_port, iui->ptype, FALSE);
+					dst_port = get_conversation_port(NULL, iui->dst_port, iui->ptype, FALSE);
+				}
+
+				/* If the src_name and src_addr match, it means that DNS resolution failed, zero it out */
+				if (strcmp(src_name, src_addr) == 0) {
+					src_name = null_string;
+				}
+
+				if (strcmp(dst_name, dst_addr) == 0) {
+					dst_name = null_string;
+				}
+
+				printf("%s,%s,%s,%s,%s,%s,%s,%" G_GINT64_MODIFIER "u,%" G_GINT64_MODIFIER
+						"u,%" G_GINT64_MODIFIER "u,%" G_GINT64_MODIFIER "u,%"
+						G_GINT64_MODIFIER "u,%" G_GINT64_MODIFIER "u,",
+					iu->type,
+					src_addr, src_name, src_port,
+					dst_addr, dst_name, dst_port,
+					iui->rx_frames, iui->rx_bytes,
+					iui->tx_frames, iui->tx_bytes,
+					iui->tx_frames+iui->rx_frames,
+					iui->tx_bytes+iui->rx_bytes
+				);
+
+				if (display_ports) {
 					wmem_free(NULL, src_port);
 					wmem_free(NULL, dst_port);
-					wmem_free(NULL, src);
-					wmem_free(NULL, dst);
-				} else {
-					printf("%-20s <-> %-20s  %6" G_GINT64_MODIFIER "u %9" G_GINT64_MODIFIER
-					       "u  %6" G_GINT64_MODIFIER "u %9" G_GINT64_MODIFIER "u  %6"
-					       G_GINT64_MODIFIER "u %9" G_GINT64_MODIFIER "u  ",
-						src_addr, dst_addr,
-						iui->rx_frames, iui->rx_bytes,
-						iui->tx_frames, iui->tx_bytes,
-						iui->tx_frames+iui->rx_frames,
-						iui->tx_bytes+iui->rx_bytes
-					);
 				}
 
 				wmem_free(NULL, src_addr);
@@ -315,7 +329,7 @@ iousers_draw_machine_readable(void *arg)
 		}
 		max_frames = last_frames;
 	} while (last_frames);
-	printf("================================================================================\n");
+	printf("\n");
 }
 static void
 iousers_draw(void *arg)
