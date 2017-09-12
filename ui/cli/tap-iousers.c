@@ -329,12 +329,10 @@ iousers_draw_machine_readable(void *arg)
 		}
 		max_frames = last_frames;
 	} while (last_frames);
-	printf("\n");
 }
 static void
 iousers_draw(void *arg)
 {
-	printf("Testing\n");
 	if (1) {
 		iousers_draw_machine_readable(arg);
 	} else {
